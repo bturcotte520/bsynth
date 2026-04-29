@@ -235,13 +235,17 @@ function SynthPageMain({ctx, core}: SynthPageMainProps) {
           event.preventDefault();
           heldMidiNotes.current.add(midi);
           setPressedMidiNotes(new Set(heldMidiNotes.current));
+          // NoteOn always plays live and records if the beat programmer is active
+          bpNoteOnRef.current(midi);        }
+      }
+    };
 
-          if (bpStatusRef.current === 'recording') {
-            bpNoteOnRef.current(midi);
-          } else {
-            playNote(midi);
-          }
-        }
+    const resumeLastHeldNote = () => {
+      const held = Array.from(heldMidiNotes.current);
+      const lastHeld = held[held.length - 1];
+
+      if (lastHeld !== undefined) {
+        playNote(lastHeld);
       }
     };
 
@@ -257,17 +261,15 @@ function SynthPageMain({ctx, core}: SynthPageMainProps) {
           heldMidiNotes.current.delete(midi);
           setPressedMidiNotes(new Set(heldMidiNotes.current));
 
-          if (bpStatusRef.current === 'recording') {
-            bpNoteOffRef.current(midi);
-          } else if (heldMidiNotes.current.size === 0) {
-            stop();
-          } else {
-            // Resume the most recently held note
-            const held = Array.from(heldMidiNotes.current);
-            const lastHeld = held[held.length - 1];
+          // NoteOff records the note-end when recording (and stops audio if last)
+          bpNoteOffRef.current(midi);
 
-            if (lastHeld !== undefined) {
-              playNote(lastHeld);
+          // For non-recording states, manage the live audio stop/resume
+          if (bpStatusRef.current !== 'recording') {
+            if (heldMidiNotes.current.size === 0) {
+              stop();
+            } else {
+              resumeLastHeldNote();
             }
           }
         }
@@ -285,24 +287,21 @@ function SynthPageMain({ctx, core}: SynthPageMainProps) {
 
   const midiNoteOn = useCallback(
     (midi: number) => {
-      if (bpStatusRef.current === 'recording') {
-        bpNoteOnRef.current(midi);
-      } else {
-        playNote(midi);
-      }
+      // NoteOn always plays live and records if the beat programmer is recording
+      bpNoteOnRef.current(midi);
     },
-    [playNote],
+    [],
   );
 
   const midiNoteOff = useCallback(
     (midi: number) => {
-      if (bpStatusRef.current === 'recording') {
-        bpNoteOffRef.current(midi);
-      } else {
+      bpNoteOffRef.current(midi);
+
+      // For non-recording states, stop the live audio
+      if (bpStatusRef.current !== 'recording') {
         stop();
       }
-    },
-    [stop],
+    },    [stop],
   );
 
   return (

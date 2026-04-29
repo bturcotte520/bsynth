@@ -63,19 +63,17 @@ export function MusicalKeyboard({
   onClose,
 }: MusicalKeyboardProps) {
   return (
+    // Pointer-events:none lets clicks pass through to the synth controls below
     <div
-      className='fixed inset-0 z-50 flex items-end justify-center'
-      style={{backgroundColor: 'rgba(0,0,0,0.6)'}}
-      onClick={onClose}
+      className='fixed inset-0 z-50 flex items-end justify-center pb-6'
+      style={{pointerEvents: 'none'}}
     >
       <div
-        className='mb-6 flex flex-col gap-3 rounded-xl p-5 shadow-2xl'
+        className='flex flex-col gap-3 rounded-xl p-5 shadow-2xl'
         style={{
           border: '1px solid #404040',
           backgroundColor: '#171717',
-        }}
-        onClick={(e) => {
-          e.stopPropagation();
+          pointerEvents: 'auto',
         }}
       >
         <div className='flex items-center justify-between gap-8'>
@@ -85,9 +83,14 @@ export function MusicalKeyboard({
           >
             Musical Typing
           </span>
-          <span className='text-xs' style={{color: '#737373'}}>
-            ⌘K or Esc to close
-          </span>
+          <button
+            className='text-xs px-2 py-0.5 rounded'
+            style={{color: '#737373', border: '1px solid #333'}}
+            type='button'
+            onClick={onClose}
+          >
+            ✕ close
+          </button>
         </div>
 
         <div

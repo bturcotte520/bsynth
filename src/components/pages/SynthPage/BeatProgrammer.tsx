@@ -6,6 +6,7 @@ import {useCallback, useEffect, useRef, useState} from 'react';
 const loopBars = 4;
 const beatsPerBar = 4;
 const loopBeats = loopBars * beatsPerBar; // 16 quarter-note beats
+const countInBeats = beatsPerBar; // 1 bar count-in
 const eighthNote = 0.5; // 1/8 note in quarter-note beats
 const minDisplayMidi = 60; // C4
 const maxDisplayMidi = 76; // E5
@@ -26,6 +27,26 @@ function midiLabel(midi: number): string {
   return name;
 }
 
+// ─── Metronome click ──────────────────────────────────────────────────────────
+
+function scheduleClick(
+  ctx: AudioContext,
+  time: number,
+  isAccent: boolean,
+): void {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.type = 'sine';
+  osc.frequency.value = isAccent ? 880 : 660;
+  gain.gain.setValueAtTime(0.45, time);
+  gain.gain.exponentialRampToValueAtTime(0.001, time + 0.08);
+  osc.start(time);
+  osc.stop(time + 0.09);
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type RawNote = {midiNote: number; startBeat: number};
@@ -37,7 +58,11 @@ export type QuantizedNote = {
   durationBeats: number;
 };
 
-export type BeatProgrammerStatus = 'idle' | 'recording' | 'playing';
+export type BeatProgrammerStatus =
+  | 'idle'
+  | 'counting'
+  | 'recording'
+  | 'playing';
 
 // ─── Quantization ─────────────────────────────────────────────────────────────
 
@@ -84,8 +109,9 @@ export function useBeatProgrammer({ctx, playNote, stop}: UseBeatProgrammerArgs) 
   const [status, setStatus] = useState<BeatProgrammerStatus>('idle');
   const [notes, setNotes] = useState<QuantizedNote[]>([]);
   const [playheadBeat, setPlayheadBeat] = useState(0);
+  // During count-in: counts down 4 → 1
+  const [countDown, setCountDown] = useState(0);
 
-  // Refs for values accessed inside the RAF closure (avoids stale state)
   const bpmRef = useRef(120);
   const statusRef = useRef<BeatProgrammerStatus>('idle');
   const notesRef = useRef<QuantizedNote[]>([]);
@@ -95,7 +121,6 @@ export function useBeatProgrammer({ctx, playNote, stop}: UseBeatProgrammerArgs) 
   const activeNoteRef = useRef<number | undefined>(undefined);
   const prevBeatRef = useRef(0);
 
-  // Keep playNote/stop stable inside the RAF closure
   const playNoteRef = useRef(playNote);
   playNoteRef.current = playNote;
   const stopRef = useRef(stop);
@@ -127,6 +152,7 @@ export function useBeatProgrammer({ctx, playNote, stop}: UseBeatProgrammerArgs) 
       statusRef.current = 'playing';
       setNotes(quantized);
       setStatus('playing');
+      setCountDown(0);
     };
 
     const tick = () => {
@@ -134,7 +160,22 @@ export function useBeatProgrammer({ctx, playNote, stop}: UseBeatProgrammerArgs) 
       const bpm = bpmRef.current;
       const elapsed = ctx.currentTime - startCtxTimeRef.current;
 
-      if (currentStatus === 'recording') {
+      if (currentStatus === 'counting') {
+        const beatDuration = 60 / bpm;
+        const countInDuration = countInBeats * beatDuration;
+        const countBeat = Math.floor(elapsed / beatDuration); // 0-3
+
+        setCountDown(countInBeats - countBeat); // 4 → 3 → 2 → 1
+
+        if (elapsed >= countInDuration) {
+          // Align recording start exactly to scheduled time
+          startCtxTimeRef.current += countInDuration;
+          statusRef.current = 'recording';
+          setStatus('recording');
+          setCountDown(0);
+          setPlayheadBeat(0);
+        }
+      } else if (currentStatus === 'recording') {
         const beat = elapsed * bpm / 60;
         setPlayheadBeat(Math.min(beat, loopBeats));
 
@@ -201,14 +242,35 @@ export function useBeatProgrammer({ctx, playNote, stop}: UseBeatProgrammerArgs) 
     notesRef.current = [];
     activeNoteRef.current = undefined;
     prevBeatRef.current = 0;
-    startCtxTimeRef.current = ctx.currentTime;
-    statusRef.current = 'recording';
+
+    const bpm = bpmRef.current;
+    const beatDuration = 60 / bpm;
+    // Small offset so first click isn't cut off
+    const countInStart = ctx.currentTime + 0.05;
+
+    // Schedule 4 metronome clicks for the count-in bar
+    for (let i = 0; i < countInBeats; i++) {
+      scheduleClick(ctx, countInStart + i * beatDuration, i === 0);
+    }
+
+    startCtxTimeRef.current = countInStart;
+    statusRef.current = 'counting';
     setNotes([]);
-    setStatus('recording');
+    setStatus('counting');
+    setCountDown(countInBeats);
     setPlayheadBeat(0);
   }, [ctx]);
 
   const stopRecordingEarly = useCallback(() => {
+    if (statusRef.current === 'counting') {
+      stopRef.current();
+      statusRef.current = 'idle';
+      setStatus('idle');
+      setCountDown(0);
+      setPlayheadBeat(0);
+      return;
+    }
+
     if (statusRef.current !== 'recording') {
       return;
     }
@@ -262,23 +324,23 @@ export function useBeatProgrammer({ctx, playNote, stop}: UseBeatProgrammerArgs) 
     statusRef.current = 'idle';
     setNotes([]);
     setStatus('idle');
+    setCountDown(0);
     setPlayheadBeat(0);
   }, []);
 
+  // NoteOn always plays live AND records the note if recording is active.
+  // This ensures the keyboard handler never needs to inspect bp.status.
   const noteOn = useCallback(
     (midiNote: number) => {
-      if (statusRef.current !== 'recording') {
-        return;
+      if (statusRef.current === 'recording') {
+        const beat =
+          (ctx.currentTime - startCtxTimeRef.current) * bpmRef.current / 60;
+
+        if (beat < loopBeats) {
+          inFlightRef.current.set(midiNote, {midiNote, startBeat: beat});
+        }
       }
 
-      const beat =
-        (ctx.currentTime - startCtxTimeRef.current) * bpmRef.current / 60;
-
-      if (beat >= loopBeats) {
-        return;
-      }
-
-      inFlightRef.current.set(midiNote, {midiNote, startBeat: beat});
       playNoteRef.current(midiNote);
     },
     [ctx],
@@ -317,6 +379,7 @@ export function useBeatProgrammer({ctx, playNote, stop}: UseBeatProgrammerArgs) 
     status,
     notes,
     playheadBeat,
+    countDown,
     startRecording,
     stopRecordingEarly,
     togglePlayback,
@@ -328,13 +391,12 @@ export function useBeatProgrammer({ctx, playNote, stop}: UseBeatProgrammerArgs) 
 
 // ─── Piano Roll ───────────────────────────────────────────────────────────────
 
-const rowHeight = 8;
-const rollHeight = displayNoteCount * rowHeight; // 136
-const labelWidth = 24;
+const rowHeight = 12;
+const rollHeight = displayNoteCount * rowHeight; // 204
+const labelWidth = 28;
 const viewWidth = loopBeats * 100; // 1600 units (100 per quarter-note beat)
 
-const isBlackKey = (midi: number) =>
-  [1, 3, 6, 8, 10].includes(midi % 12);
+const isBlackKey = (midi: number) => [1, 3, 6, 8, 10].includes(midi % 12);
 
 type PianoRollProps = {
   notes: QuantizedNote[];
@@ -371,10 +433,10 @@ function PianoRoll({notes, playheadBeat, status}: PianoRollProps) {
               <text
                 fill='#555'
                 fontFamily='monospace'
-                fontSize={5.5}
+                fontSize={7}
                 textAnchor='end'
                 x={labelWidth - 2}
-                y={y + rowHeight - 2}
+                y={y + rowHeight - 3}
               >
                 {midiLabel(midi)}
               </text>
@@ -436,7 +498,7 @@ function PianoRoll({notes, playheadBeat, status}: PianoRollProps) {
             fontFamily='monospace'
             fontSize={10}
             x={(i / loopBars) * viewWidth + 4}
-            y={8}
+            y={11}
           >
             {i + 1}
           </text>
@@ -446,7 +508,7 @@ function PianoRoll({notes, playheadBeat, status}: PianoRollProps) {
         {notes.map((note) => {
           const x = (note.startBeat / loopBeats) * viewWidth;
           const w = Math.max(
-            3,
+            4,
             (note.durationBeats / loopBeats) * viewWidth - 2,
           );
           const row = maxDisplayMidi - note.midiNote;
@@ -459,7 +521,7 @@ function PianoRoll({notes, playheadBeat, status}: PianoRollProps) {
               fill='#4ade80'
               height={h}
               opacity={0.9}
-              rx={1}
+              rx={2}
               width={w}
               x={x}
               y={y}
@@ -468,11 +530,11 @@ function PianoRoll({notes, playheadBeat, status}: PianoRollProps) {
         })}
 
         {/* Playhead */}
-        {status !== 'idle' && (
+        {status !== 'idle' && status !== 'counting' && (
           <line
-            opacity={0.7}
+            opacity={0.8}
             stroke='#fff'
-            strokeWidth={1.5}
+            strokeWidth={2}
             x1={playheadX}
             x2={playheadX}
             y1={0}
@@ -540,6 +602,7 @@ export function BeatProgrammer({handle}: BeatProgrammerProps) {
     status,
     notes,
     playheadBeat,
+    countDown,
     startRecording,
     stopRecordingEarly,
     togglePlayback,
@@ -549,6 +612,7 @@ export function BeatProgrammer({handle}: BeatProgrammerProps) {
   const bar = Math.floor(playheadBeat / beatsPerBar) + 1;
   const beatInBar = Math.floor(playheadBeat % beatsPerBar) + 1;
   const beatsLeft = Math.ceil(loopBeats - playheadBeat);
+  const isRecordingOrCounting = status === 'recording' || status === 'counting';
 
   return (
     <div
@@ -564,7 +628,9 @@ export function BeatProgrammer({handle}: BeatProgrammerProps) {
           Beat Programmer
         </span>
         <span className='text-xs font-mono' style={{color: '#525252'}}>
-          {status === 'idle' ? '─ : ─' : `${bar} : ${beatInBar}`}
+          {status === 'idle' || status === 'counting'
+            ? '─ : ─'
+            : `${bar} : ${beatInBar}`}
         </span>
       </div>
 
@@ -607,7 +673,7 @@ export function BeatProgrammer({handle}: BeatProgrammerProps) {
 
       {/* Transport row */}
       <div className='flex items-center gap-2 flex-wrap'>
-        {status === 'recording' ? (
+        {isRecordingOrCounting ? (
           <TransportButton
             isActive
             color='red'
@@ -633,6 +699,18 @@ export function BeatProgrammer({handle}: BeatProgrammerProps) {
           label='✕ Clear'
           onClick={clearAll}
         />
+
+        {/* Count-in countdown */}
+        {status === 'counting' && (
+          <span
+            className='ml-auto text-2xl font-bold font-mono animate-pulse'
+            style={{color: '#f87171'}}
+          >
+            {countDown}
+          </span>
+        )}
+
+        {/* Recording beat countdown */}
         {status === 'recording' && (
           <span
             className='text-xs font-mono ml-auto animate-pulse'
@@ -662,9 +740,11 @@ export function BeatProgrammer({handle}: BeatProgrammerProps) {
       <p className='text-xs' style={{color: '#404040'}}>
         {status === 'idle' && notes.length === 0
           ? 'Press Rec then play via Musical Typing or MIDI to record a 4-bar loop.'
-          : status === 'recording'
-            ? 'Playing notes now — will be quantized to 1/8 notes on stop.'
-            : `${notes.length} note${notes.length === 1 ? '' : 's'} recorded — quantized to 1/8 notes.`}
+          : status === 'counting'
+            ? 'Count-in — get ready to play…'
+            : status === 'recording'
+              ? 'Recording — notes will be quantized to 1/8 notes on stop.'
+              : `${notes.length} note${notes.length === 1 ? '' : 's'} recorded — quantized to 1/8 notes.`}
       </p>
     </div>
   );
