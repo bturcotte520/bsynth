@@ -9,7 +9,8 @@ type ButtonProps = Omit<ButtonNativeProps, 'type' | 'className'> & {
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({size, ...rest}, forwardRef) => {
     const baseClass = clsx(
-      'cursor-default bg-gray-2 outline-none webkit-tap-transparent hover:bg-gray-3 focus-visible:outline-1 focus-visible:outline-gray-5 active:bg-gray-4',
+      'cursor-default rounded-lg bg-gray-2 outline-none webkit-tap-transparent hover:bg-gray-3 focus-visible:outline-1 focus-visible:outline-gray-5 active:bg-gray-4 transition-colors',
+      'shadow-sm hover:shadow',
     );
     const spacingClass = clsx(
       size === 'small' && 'px-2 py-1 md:px-4',

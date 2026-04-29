@@ -69,27 +69,28 @@ export function MusicalKeyboard({
       style={{pointerEvents: 'none'}}
     >
       <div
-        className='flex flex-col gap-3 rounded-xl p-5 shadow-2xl'
+        className='flex flex-col gap-3 rounded-2xl p-5 shadow-2xl'
         style={{
-          border: '1px solid #404040',
-          backgroundColor: '#171717',
+          border: '1px solid #d4c8b8',
+          backgroundColor: '#ede6de',
           pointerEvents: 'auto',
+          boxShadow: '4px 4px 16px rgba(0,0,0,0.1), -1px -1px 4px rgba(255,255,255,0.3)',
         }}
       >
         <div className='flex items-center justify-between gap-8'>
           <span
             className='text-xs font-semibold tracking-widest uppercase'
-            style={{color: '#d4d4d4'}}
+            style={{color: '#2a2018'}}
           >
             Musical Typing
           </span>
           <button
-            className='text-xs px-2 py-0.5 rounded'
-            style={{color: '#737373', border: '1px solid #333'}}
+            className='text-xs px-3 py-1 rounded-lg font-medium'
+            style={{color: '#6a5a4a', border: '1px solid #c4b8a8', backgroundColor: '#e5ddd3'}}
             type='button'
             onClick={onClose}
           >
-            ✕ close
+            close
           </button>
         </div>
 
@@ -113,7 +114,7 @@ export function MusicalKeyboard({
           ))}
         </div>
 
-        <p className='text-center text-xs' style={{color: '#525252'}}>
+        <p className='text-center text-xs' style={{color: '#8a7a6a'}}>
           Keys shown on the piano correspond to your keyboard
         </p>
       </div>
@@ -136,18 +137,18 @@ function PianoKey({
 
   let bg: string;
   if (isBlack) {
-    bg = isPressed ? '#4ade80' : '#1a1a1a';
+    bg = isPressed ? '#c4652a' : '#6a5a4a';
   } else {
-    bg = isPressed ? '#86efac' : '#ffffff';
+    bg = isPressed ? '#d4894a' : '#f5f0eb';
   }
 
   const labelColor = isPressed
     ? isBlack
-      ? '#ffffff'
-      : '#166534'
+      ? '#f5f0eb'
+      : '#2a2018'
     : isBlack
-      ? '#6b7280'
-      : '#9ca3af';
+      ? '#c4b8a8'
+      : '#8a7a6a';
 
   return (
     <div
@@ -158,14 +159,17 @@ function PianoKey({
         height,
         zIndex,
         backgroundColor: bg,
-        border: isBlack ? '1px solid #374151' : '1px solid #d1d5db',
-        borderRadius: '0 0 4px 4px',
+        border: isBlack ? '1px solid #8a7a6a' : '1px solid #c4b8a8',
+        borderRadius: '0 0 8px 8px',
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'flex-end',
         alignItems: 'center',
         paddingBottom: 4,
         transition: 'background-color 60ms',
+        boxShadow: isBlack
+          ? `2px 2px 6px rgba(0,0,0,0.2), inset 0 1px 2px rgba(255,255,255,0.1)`
+          : `inset 2px 2px 4px rgba(0,0,0,0.05), inset -1px -1px 2px rgba(255,255,255,0.3)`,
       }}
     >
       {label && (

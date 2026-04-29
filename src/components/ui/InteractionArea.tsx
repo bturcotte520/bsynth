@@ -10,7 +10,7 @@ type InteractionAreaProps = Omit<DivProps, 'className' | 'children'> & {
 };
 
 const baseClass = clsx(
-  'flex h-32 w-full max-w-md select-none flex-col items-center justify-center gap-1 rounded-md border border-dashed border-gray-4 p-4 text-center text-gray-5 sm:p-8',
+  'flex h-32 w-full max-w-md select-none flex-col items-center justify-center gap-1 rounded-2xl border-2 border-dashed border-gray-4 bg-gray-1 p-4 text-center text-gray-5 sm:p-8',
 );
 
 export function InteractionArea({icon, title, ...rest}: InteractionAreaProps) {

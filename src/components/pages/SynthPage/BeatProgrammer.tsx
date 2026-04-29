@@ -13,10 +13,15 @@ type DrumTrack = {
 };
 
 const drumTracks: DrumTrack[] = [
-  {id: 'kick', label: 'KICK', file: '/drums/kick.wav', color: '#ef4444'},
-  {id: 'snare', label: 'SNARE', file: '/drums/clap.wav', color: '#f97316'},
-  {id: 'hat', label: 'HI-HAT', file: '/drums/hat.wav', color: '#eab308'},
-  {id: 'open-hat', label: 'OPEN HH', file: '/drums/open-hat.wav', color: '#22c55e'},
+  {id: 'kick', label: 'KICK', file: '/drums/kick.wav', color: '#c4652a'},
+  {id: 'snare', label: 'SNARE', file: '/drums/clap.wav', color: '#b83a1a'},
+  {id: 'hat', label: 'HI-HAT', file: '/drums/hat.wav', color: '#d4894a'},
+  {
+    id: 'open-hat',
+    label: 'OPEN HH',
+    file: '/drums/open-hat.wav',
+    color: '#a87040',
+  },
 ];
 
 const drumStepsDefault: Record<DrumTrackId, Set<number>> = {
@@ -38,7 +43,18 @@ const maxDisplayMidi = 76; // E5
 const displayNoteCount = maxDisplayMidi - minDisplayMidi + 1; // 17
 
 const noteNames = [
-  'C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B',
+  'C',
+  'C#',
+  'D',
+  'D#',
+  'E',
+  'F',
+  'F#',
+  'G',
+  'G#',
+  'A',
+  'A#',
+  'B',
 ];
 
 function midiLabel(midi: number): string {
@@ -129,13 +145,18 @@ type UseBeatProgrammerArgs = {
   stop: () => void;
 };
 
-export function useBeatProgrammer({ctx, playNote, stop}: UseBeatProgrammerArgs) {
+export function useBeatProgrammer({
+  ctx,
+  playNote,
+  stop,
+}: UseBeatProgrammerArgs) {
   const [bpm, setBpm] = useState(120);
   const [status, setStatus] = useState<BeatProgrammerStatus>('idle');
   const [notes, setNotes] = useState<QuantizedNote[]>([]);
   const [playheadBeat, setPlayheadBeat] = useState(0);
   const [countDown, setCountDown] = useState(0);
-  const [drumSteps, setDrumSteps] = useState<Record<DrumTrackId, Set<number>>>(drumStepsDefault);
+  const [drumSteps, setDrumSteps] =
+    useState<Record<DrumTrackId, Set<number>>>(drumStepsDefault);
   const [isDrumMuted, setIsDrumMuted] = useState(false);
   const [drumsReady, setDrumsReady] = useState(false);
 
@@ -147,7 +168,8 @@ export function useBeatProgrammer({ctx, playNote, stop}: UseBeatProgrammerArgs) 
   const completedRawRef = useRef<Array<{note: RawNote; endBeat: number}>>([]);
   const activeNoteRef = useRef<number | undefined>(undefined);
   const prevBeatRef = useRef(0);
-  const drumStepsRef = useRef<Record<DrumTrackId, Set<number>>>(drumStepsDefault);
+  const drumStepsRef =
+    useRef<Record<DrumTrackId, Set<number>>>(drumStepsDefault);
   useEffect(() => {
     drumStepsRef.current = drumSteps;
   }, [drumSteps]);
@@ -175,8 +197,7 @@ export function useBeatProgrammer({ctx, playNote, stop}: UseBeatProgrammerArgs) 
             const arrayBuffer = await res.arrayBuffer();
             const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
             buffers.set(track.id, audioBuffer);
-          } catch {
-          }
+          } catch {}
         }),
       );
       buffersRef.current = buffers;
@@ -186,18 +207,21 @@ export function useBeatProgrammer({ctx, playNote, stop}: UseBeatProgrammerArgs) 
     void load();
   }, [ctx]);
 
-  const triggerDrum = useCallback((trackId: string) => {
-    const buffer = buffersRef.current.get(trackId);
-    if (!buffer) return;
-    if (ctx.state !== 'running') void ctx.resume();
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    const gain = ctx.createGain();
-    gain.gain.value = 0.8;
-    source.connect(gain);
-    gain.connect(ctx.destination);
-    source.start();
-  }, [ctx]);
+  const triggerDrum = useCallback(
+    (trackId: string) => {
+      const buffer = buffersRef.current.get(trackId);
+      if (!buffer) return;
+      if (ctx.state !== 'running') void ctx.resume();
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      const gain = ctx.createGain();
+      gain.gain.value = 0.8;
+      source.connect(gain);
+      gain.connect(ctx.destination);
+      source.start();
+    },
+    [ctx],
+  );
 
   const triggerDrumRef = useRef(triggerDrum);
   triggerDrumRef.current = triggerDrum;
@@ -252,7 +276,7 @@ export function useBeatProgrammer({ctx, playNote, stop}: UseBeatProgrammerArgs) 
           setPlayheadBeat(0);
         }
       } else if (currentStatus === 'recording') {
-        const beat = elapsed * bpm / 60;
+        const beat = (elapsed * bpm) / 60;
         setPlayheadBeat(Math.min(beat, loopBeats));
 
         if (beat >= loopBeats) {
@@ -273,9 +297,9 @@ export function useBeatProgrammer({ctx, playNote, stop}: UseBeatProgrammerArgs) 
           }
         }
       } else if (currentStatus === 'playing') {
-        const loopSecs = loopBeats * 60 / bpm;
+        const loopSecs = (loopBeats * 60) / bpm;
         const loopElapsed = elapsed % loopSecs;
-        const beat = loopElapsed * bpm / 60;
+        const beat = (loopElapsed * bpm) / 60;
 
         if (beat < prevBeatRef.current - 1) {
           activeNoteRef.current = undefined;
@@ -381,7 +405,7 @@ export function useBeatProgrammer({ctx, playNote, stop}: UseBeatProgrammerArgs) 
     }
 
     const elapsed = ctx.currentTime - startCtxTimeRef.current;
-    const endBeat = Math.min(elapsed * bpmRef.current / 60, loopBeats);
+    const endBeat = Math.min((elapsed * bpmRef.current) / 60, loopBeats);
     const allRaw: Array<{note: RawNote; endBeat: number}> = [
       ...completedRawRef.current,
     ];
@@ -414,7 +438,9 @@ export function useBeatProgrammer({ctx, playNote, stop}: UseBeatProgrammerArgs) 
       setStatus('idle');
       setPlayheadBeat(0);
     } else if (notesRef.current.length > 0 || drumStepsRef.current) {
-      const hasDrums = drumTracks.some((t) => drumStepsRef.current[t.id].size > 0);
+      const hasDrums = drumTracks.some(
+        (t) => drumStepsRef.current[t.id].size > 0,
+      );
       if (notesRef.current.length === 0 && !hasDrums) return;
       activeNoteRef.current = undefined;
       lastTriggeredDrumStepRef.current = undefined;
@@ -469,7 +495,7 @@ export function useBeatProgrammer({ctx, playNote, stop}: UseBeatProgrammerArgs) 
     (midiNote: number) => {
       if (statusRef.current === 'recording') {
         const beat =
-          (ctx.currentTime - startCtxTimeRef.current) * bpmRef.current / 60;
+          ((ctx.currentTime - startCtxTimeRef.current) * bpmRef.current) / 60;
 
         if (beat < loopBeats) {
           inFlightRef.current.set(midiNote, {midiNote, startBeat: beat});
@@ -494,7 +520,7 @@ export function useBeatProgrammer({ctx, playNote, stop}: UseBeatProgrammerArgs) 
       }
 
       const beat =
-        (ctx.currentTime - startCtxTimeRef.current) * bpmRef.current / 60;
+        ((ctx.currentTime - startCtxTimeRef.current) * bpmRef.current) / 60;
       completedRawRef.current.push({
         note: rawNote,
         endBeat: Math.min(beat, loopBeats),
@@ -564,14 +590,14 @@ function PianoRoll({notes, playheadBeat, status}: PianoRollProps) {
           return (
             <g key={midi}>
               <rect
-                fill={black ? '#1a1a1a' : '#222'}
+                fill={black ? '#e0d6cc' : '#e8e0d6'}
                 height={rowHeight}
                 width={labelWidth}
                 x={0}
                 y={y}
               />
               <text
-                fill='#555'
+                fill='#6a5a4a'
                 fontFamily='monospace'
                 fontSize={7}
                 textAnchor='end'
@@ -601,7 +627,7 @@ function PianoRoll({notes, playheadBeat, status}: PianoRollProps) {
           return (
             <rect
               key={midi}
-              fill={black ? '#111' : '#161616'}
+              fill={black ? '#f0e8de' : '#f5ede5'}
               height={rowHeight}
               width={viewWidth}
               x={0}
@@ -620,7 +646,9 @@ function PianoRoll({notes, playheadBeat, status}: PianoRollProps) {
           return (
             <line
               key={i}
-              stroke={isBarLine ? '#333' : isBeatLine ? '#222' : '#191919'}
+              stroke={
+                isBarLine ? '#c4b8a8' : isBeatLine ? '#d4c8b8' : '#e0d6cc'
+              }
               strokeWidth={isBarLine ? 2 : 1}
               x1={x}
               x2={x}
@@ -634,7 +662,7 @@ function PianoRoll({notes, playheadBeat, status}: PianoRollProps) {
         {Array.from({length: loopBars}, (_, i) => (
           <text
             key={i}
-            fill='#333'
+            fill='#a89888'
             fontFamily='monospace'
             fontSize={10}
             x={(i / loopBars) * viewWidth + 4}
@@ -658,7 +686,7 @@ function PianoRoll({notes, playheadBeat, status}: PianoRollProps) {
           return (
             <rect
               key={note.id}
-              fill='#4ade80'
+              fill='#c4652a'
               height={h}
               opacity={0.9}
               rx={2}
@@ -673,7 +701,7 @@ function PianoRoll({notes, playheadBeat, status}: PianoRollProps) {
         {status !== 'idle' && status !== 'counting' && (
           <line
             opacity={0.8}
-            stroke='#fff'
+            stroke='#6a5a4a'
             strokeWidth={2}
             x1={playheadX}
             x2={playheadX}
@@ -704,15 +732,15 @@ function TransportButton({
   onClick,
 }: TransportButtonProps) {
   const base =
-    'px-3 py-1 text-xs font-mono rounded border transition-colors disabled:opacity-30 disabled:cursor-not-allowed';
+    'px-3 py-1 text-xs font-mono rounded-lg border transition-colors disabled:opacity-30 disabled:cursor-not-allowed';
   const colorClass = {
     red: isActive
-      ? 'bg-red-500 text-white border-red-400'
-      : 'text-red-400 border-red-900 hover:border-red-500',
+      ? 'bg-red text-white border-red shadow-sm'
+      : 'text-red border-red hover:border-red',
     green: isActive
-      ? 'bg-green-500 text-white border-green-400'
-      : 'text-green-400 border-green-900 hover:border-green-500',
-    neutral: 'text-neutral-400 border-neutral-700 hover:border-neutral-500',
+      ? 'bg-green text-white border-green shadow-sm'
+      : 'text-green border-green hover:border-green',
+    neutral: 'text-gray-5 border-gray-4 hover:border-gray-5',
   }[color];
 
   return (
@@ -750,28 +778,36 @@ function DrumSequencer({
   onToggleStep,
   onToggleMute,
 }: DrumSequencerProps) {
-  const currentDrumStep = status === 'playing' || status === 'recording'
-    ? Math.min(Math.floor(snapToEighth(playheadBeat) / eighthNote), drumStepCount - 1)
-    : -1;
+  const currentDrumStep =
+    status === 'playing' || status === 'recording'
+      ? Math.min(
+          Math.floor(snapToEighth(playheadBeat) / eighthNote),
+          drumStepCount - 1,
+        )
+      : -1;
 
   return (
     <div
-      className='rounded-lg p-3'
-      style={{border: '1px solid #1e1e1e', backgroundColor: '#0a0a0a'}}
+      className='rounded-2xl p-4'
+      style={{
+        border: '1px solid #d4c8b8',
+        backgroundColor: '#f0e8de',
+        boxShadow: '2px 2px 8px rgba(0,0,0,0.06)',
+      }}
     >
-      <div className='flex items-center justify-between mb-2'>
+      <div className='mb-2 flex items-center justify-between'>
         <span
-          className='text-xs font-semibold tracking-widest uppercase'
-          style={{color: '#737373'}}
+          className='text-xs font-semibold uppercase tracking-widest'
+          style={{color: '#6a5a4a'}}
         >
           Drum Sequencer
         </span>
         <button
           type='button'
-          className={`px-2 py-0.5 text-xs font-mono rounded border transition-colors ${
+          className={`rounded-lg border px-2 py-0.5 font-mono text-xs transition-colors ${
             isDrumMuted
-              ? 'bg-red-900/50 text-red-400 border-red-800'
-              : 'text-neutral-400 border-neutral-700 hover:border-neutral-500'
+              ? 'border-red bg-red text-white'
+              : 'border-gray-4 text-gray-5 hover:border-gray-5'
           }`}
           disabled={!isDrumsReady}
           onClick={onToggleMute}
@@ -780,15 +816,17 @@ function DrumSequencer({
         </button>
       </div>
 
-      <div className='flex gap-1 mb-1 pl-14'>
+      <div className='mb-1 flex gap-1 pl-14'>
         {Array.from({length: drumStepCount}, (_, i) => {
           const isBarStart = i % 4 === 0;
           const isBeat = i % 2 === 0;
           return (
             <div
               key={i}
-              className='flex-1 text-center text-xs font-mono'
-              style={{color: isBarStart ? '#555' : isBeat ? '#333' : '#222'}}
+              className='flex-1 text-center font-mono text-xs'
+              style={{
+                color: isBarStart ? '#8a7a6a' : isBeat ? '#a89888' : '#d4c8b8',
+              }}
             >
               {isBarStart ? Math.floor(i / 4) + 1 : '.'}
             </div>
@@ -797,14 +835,14 @@ function DrumSequencer({
       </div>
 
       {drumTracks.map((track) => (
-        <div key={track.id} className='flex items-center gap-1 mb-1'>
+        <div key={track.id} className='mb-1 flex items-center gap-1'>
           <span
-            className='w-12 text-right text-xs font-mono shrink-0 pr-2'
+            className='w-12 shrink-0 pr-2 text-right font-mono text-xs'
             style={{color: track.color}}
           >
             {track.label}
           </span>
-          <div className='flex gap-1 flex-1'>
+          <div className='flex flex-1 gap-1'>
             {Array.from({length: drumStepCount}, (_, step) => {
               const isActive = drumSteps[track.id].has(step);
               const isCurrent = step === currentDrumStep;
@@ -814,14 +852,23 @@ function DrumSequencer({
                 <button
                   key={step}
                   type='button'
-                  className='flex-1 h-6 rounded-sm border transition-colors'
+                  className='h-6 flex-1 rounded-md border transition-colors'
                   style={{
-                    backgroundColor: isActive ? track.color : isBarStart ? '#1a1a1a' : '#111',
-                    borderColor: isActive ? track.color : isBarStart ? '#2a2a2a' : '#1a1a1a',
+                    backgroundColor: isActive
+                      ? track.color
+                      : isBarStart
+                      ? '#e8e0d6'
+                      : '#f0e8de',
+                    borderColor: isActive
+                      ? track.color
+                      : isBarStart
+                      ? '#d4c8b8'
+                      : '#e0d6cc',
                     opacity: isDrumsReady ? 1 : 0.3,
-                    boxShadow: isCurrent && !isDrumMuted
-                      ? `0 0 4px ${track.color}40`
-                      : 'none',
+                    boxShadow:
+                      isCurrent && !isDrumMuted
+                        ? `0 0 4px ${track.color}40`
+                        : 'none',
                   }}
                   disabled={!isDrumsReady}
                   onClick={() => {
@@ -835,7 +882,7 @@ function DrumSequencer({
       ))}
 
       {!isDrumsReady && (
-        <p className='text-xs mt-2' style={{color: '#404040'}}>
+        <p className='mt-2 text-xs' style={{color: '#a89888'}}>
           Loading drum samples...
         </p>
       )}
@@ -878,18 +925,22 @@ export function BeatProgrammer({handle}: BeatProgrammerProps) {
 
   return (
     <div
-      className='w-full max-w-xl flex flex-col gap-3 p-4 rounded-lg'
-      style={{border: '1px solid #2a2a2a', backgroundColor: '#0d0d0d'}}
+      className='flex w-full max-w-xl flex-col gap-4 rounded-2xl p-5'
+      style={{
+        border: '1px solid #d4c8b8',
+        backgroundColor: '#f0e8de',
+        boxShadow: '4px 4px 12px rgba(0,0,0,0.06)',
+      }}
     >
       {/* Header */}
       <div className='flex items-center justify-between'>
         <span
-          className='text-xs font-semibold tracking-widest uppercase'
-          style={{color: '#737373'}}
+          className='text-xs font-semibold uppercase tracking-widest'
+          style={{color: '#6a5a4a'}}
         >
           Beat Programmer
         </span>
-        <span className='text-xs font-mono' style={{color: '#525252'}}>
+        <span className='font-mono text-xs' style={{color: '#8a7a6a'}}>
           {status === 'idle' || status === 'counting'
             ? '─ : ─'
             : `${bar} : ${beatInBar}`}
@@ -898,11 +949,11 @@ export function BeatProgrammer({handle}: BeatProgrammerProps) {
 
       {/* BPM row */}
       <div className='flex items-center gap-3'>
-        <span className='text-xs w-8 shrink-0' style={{color: '#525252'}}>
+        <span className='w-8 shrink-0 text-xs' style={{color: '#8a7a6a'}}>
           BPM
         </span>
         <input
-          className='flex-1 h-1'
+          className='h-1 flex-1'
           max={240}
           min={40}
           step={1}
@@ -913,13 +964,13 @@ export function BeatProgrammer({handle}: BeatProgrammerProps) {
           }}
         />
         <input
-          className='w-12 text-xs font-mono text-right outline-none'
+          className='w-12 text-right font-mono text-xs outline-none'
           max={240}
           min={40}
           style={{
             background: 'transparent',
-            borderBottom: '1px solid #333',
-            color: '#d4d4d4',
+            borderBottom: '1px solid #c4b8a8',
+            color: '#6a5a4a',
           }}
           type='number'
           value={bpm}
@@ -934,7 +985,7 @@ export function BeatProgrammer({handle}: BeatProgrammerProps) {
       </div>
 
       {/* Transport row */}
-      <div className='flex items-center gap-2 flex-wrap'>
+      <div className='flex flex-wrap items-center gap-2'>
         {isRecordingOrCounting ? (
           <TransportButton
             isActive
@@ -943,11 +994,7 @@ export function BeatProgrammer({handle}: BeatProgrammerProps) {
             onClick={stopRecordingEarly}
           />
         ) : (
-          <TransportButton
-            color='red'
-            label='● Rec'
-            onClick={startRecording}
-          />
+          <TransportButton color='red' label='● Rec' onClick={startRecording} />
         )}
         <TransportButton
           color='green'
@@ -956,17 +1003,13 @@ export function BeatProgrammer({handle}: BeatProgrammerProps) {
           label={status === 'playing' ? '■ Stop' : '▶ Play'}
           onClick={togglePlayback}
         />
-        <TransportButton
-          color='neutral'
-          label='✕ Clear'
-          onClick={clearAll}
-        />
+        <TransportButton color='neutral' label='✕ Clear' onClick={clearAll} />
 
         {/* Count-in countdown */}
         {status === 'counting' && (
           <span
-            className='ml-auto text-2xl font-bold font-mono animate-pulse'
-            style={{color: '#f87171'}}
+            className='ml-auto animate-pulse font-mono text-2xl font-bold'
+            style={{color: '#b83a1a'}}
           >
             {countDown}
           </span>
@@ -975,8 +1018,8 @@ export function BeatProgrammer({handle}: BeatProgrammerProps) {
         {/* Recording beat countdown */}
         {status === 'recording' && (
           <span
-            className='text-xs font-mono ml-auto animate-pulse'
-            style={{color: '#f87171'}}
+            className='ml-auto animate-pulse font-mono text-xs'
+            style={{color: '#b83a1a'}}
           >
             {beatsLeft} beat{beatsLeft === 1 ? '' : 's'} left
           </span>
@@ -986,16 +1029,12 @@ export function BeatProgrammer({handle}: BeatProgrammerProps) {
       {/* Piano roll */}
       <div
         style={{
-          borderRadius: 4,
+          borderRadius: 12,
           overflow: 'hidden',
-          border: '1px solid #1e1e1e',
+          border: '1px solid #d4c8b8',
         }}
       >
-        <PianoRoll
-          notes={notes}
-          playheadBeat={playheadBeat}
-          status={status}
-        />
+        <PianoRoll notes={notes} playheadBeat={playheadBeat} status={status} />
       </div>
 
       {/* Drum sequencer */}
@@ -1010,14 +1049,16 @@ export function BeatProgrammer({handle}: BeatProgrammerProps) {
       />
 
       {/* Status hint */}
-      <p className='text-xs' style={{color: '#404040'}}>
+      <p className='text-xs' style={{color: '#8a7a6a'}}>
         {status === 'idle' && notes.length === 0
           ? 'Press Rec then play via Musical Typing or MIDI to record a 4-bar loop.'
           : status === 'counting'
-            ? 'Count-in — get ready to play…'
-            : status === 'recording'
-              ? 'Recording — notes will be quantized to 1/8 notes on stop.'
-              : `${notes.length} note${notes.length === 1 ? '' : 's'} recorded — quantized to 1/8 notes.`}
+          ? 'Count-in — get ready to play…'
+          : status === 'recording'
+          ? 'Recording — notes will be quantized to 1/8 notes on stop.'
+          : `${notes.length} note${
+              notes.length === 1 ? '' : 's'
+            } recorded — quantized to 1/8 notes.`}
       </p>
     </div>
   );

@@ -8,7 +8,7 @@ type MeterProps = Omit<CanvasNativeProps, 'className'>;
 const baseClass = clsx('absolute h-full w-full');
 
 export const Meter = forwardRef<HTMLCanvasElement, MeterProps>((props, ref) => (
-  <canvas ref={ref} className={clsx(baseClass, 'bg-gray-3')} {...props} />
+  <canvas ref={ref} className={clsx(baseClass, 'bg-gray-2 rounded-sm')} {...props} />
 ));
 
 export function MeterSkeleton() {

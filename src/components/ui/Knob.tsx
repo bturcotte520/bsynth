@@ -161,12 +161,17 @@ export function Knob({
           onValueRawChange={onChange}
           onKeyDown={onKeyDown}
         >
-          <div className='absolute h-full w-full rounded-full bg-gray-3'>
+          <div
+            className='absolute h-full w-full rounded-full bg-gray-3'
+            style={{
+              boxShadow: 'inset 2px 2px 6px rgba(0,0,0,0.15), inset -2px -2px 6px rgba(255,255,255,0.3), 2px 2px 8px rgba(0,0,0,0.1)',
+            }}
+          >
             <div
               className='absolute h-full w-full'
               style={{rotate: `${angle}deg`}}
             >
-              <div className='absolute left-1/2 top-0 h-1/2 w-[2px] -translate-x-1/2 rounded-sm bg-gray-7' />
+              <div className='absolute left-1/2 top-0 h-1/2 w-[3px] -translate-x-1/2 rounded-full bg-green' />
             </div>
           </div>
         </KnobHeadless>
@@ -225,7 +230,7 @@ function ManualInput({initialValue, onCancel, onSubmit}: ManualInputProps) {
         ref={inputRef}
         defaultValue={initialValue}
         type='number'
-        className='w-full border border-gray-0 bg-gray-7 text-center text-gray-0 outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none'
+        className='w-full border rounded-lg border-gray-3 bg-gray-7 text-center text-gray-0 outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none'
         onBlur={submit}
         onKeyDown={(event) => {
           // Prevent standard input behaviour when it's being changed on arrow up/down press

@@ -94,7 +94,9 @@ type SynthPageMainProps = {
 
 function SynthPageMain({ctx, core}: SynthPageMainProps) {
   const [isKeyboardOpen, setIsKeyboardOpen] = useState<boolean>(false);
-  const [pressedMidiNotes, setPressedMidiNotes] = useState<ReadonlySet<number>>(new Set());
+  const [pressedMidiNotes, setPressedMidiNotes] = useState<ReadonlySet<number>>(
+    new Set(),
+  );
   const heldMidiNotes = useRef<Set<number>>(new Set());
 
   const gateKey = 'gate';
@@ -236,7 +238,8 @@ function SynthPageMain({ctx, core}: SynthPageMainProps) {
           heldMidiNotes.current.add(midi);
           setPressedMidiNotes(new Set(heldMidiNotes.current));
           // NoteOn always plays live and records if the beat programmer is active
-          bpNoteOnRef.current(midi);        }
+          bpNoteOnRef.current(midi);
+        }
       }
     };
 
@@ -285,13 +288,10 @@ function SynthPageMain({ctx, core}: SynthPageMainProps) {
     };
   }, [play, stop, playNote, isKeyboardOpen]);
 
-  const midiNoteOn = useCallback(
-    (midi: number) => {
-      // NoteOn always plays live and records if the beat programmer is recording
-      bpNoteOnRef.current(midi);
-    },
-    [],
-  );
+  const midiNoteOn = useCallback((midi: number) => {
+    // NoteOn always plays live and records if the beat programmer is recording
+    bpNoteOnRef.current(midi);
+  }, []);
 
   const midiNoteOff = useCallback(
     (midi: number) => {
@@ -301,7 +301,8 @@ function SynthPageMain({ctx, core}: SynthPageMainProps) {
       if (bpStatusRef.current !== 'recording') {
         stop();
       }
-    },    [stop],
+    },
+    [stop],
   );
 
   return (
@@ -365,7 +366,7 @@ function SynthPageMain({ctx, core}: SynthPageMainProps) {
           />
         </KnobsLayout>
       </SynthContainer>
-      <div className='flex flex-col items-center gap-4 w-full pb-8'>
+      <div className='flex w-full flex-col items-center gap-4 pb-8'>
         <BeatProgrammer handle={bp} />
         <InteractionArea
           icon={<PlayIcon />}
@@ -377,7 +378,7 @@ function SynthPageMain({ctx, core}: SynthPageMainProps) {
         />
         <button
           type='button'
-          className='text-xs text-neutral-500 hover:text-neutral-300 transition-colors'
+          className='text-xs text-gray-5 transition-colors hover:text-gray-4'
           onClick={() => {
             setIsKeyboardOpen((open) => !open);
           }}

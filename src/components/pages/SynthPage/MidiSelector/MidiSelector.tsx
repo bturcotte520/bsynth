@@ -100,7 +100,7 @@ export function MidiSelector({playNote, stopNote}: MidiSelectorProps) {
   return (
     <MidiSelectorContainer status={status}>
       <select
-        className='absolute w-full max-w-full bg-gray-4 outline-none webkit-tap-transparent focus-visible:outline-1 focus-visible:outline-gray-5'
+        className='absolute w-full max-w-full rounded-lg bg-gray-3 outline-none webkit-tap-transparent focus-visible:outline-1 focus-visible:outline-gray-5'
         value={deviceId}
         onChange={(event) => {
           const {value} = event.target;
