@@ -1,6 +1,31 @@
 'use client';
 import {useCallback, useEffect, useRef, useState} from 'react';
 
+// ─── Drum samples ─────────────────────────────────────────────────────────────
+
+type DrumTrackId = 'kick' | 'snare' | 'hat' | 'open-hat';
+
+type DrumTrack = {
+  id: DrumTrackId;
+  label: string;
+  file: string;
+  color: string;
+};
+
+const drumTracks: DrumTrack[] = [
+  {id: 'kick', label: 'KICK', file: '/drums/kick.wav', color: '#ef4444'},
+  {id: 'snare', label: 'SNARE', file: '/drums/clap.wav', color: '#f97316'},
+  {id: 'hat', label: 'HI-HAT', file: '/drums/hat.wav', color: '#eab308'},
+  {id: 'open-hat', label: 'OPEN HH', file: '/drums/open-hat.wav', color: '#22c55e'},
+];
+
+const drumStepsDefault: Record<DrumTrackId, Set<number>> = {
+  kick: new Set(),
+  snare: new Set(),
+  hat: new Set(),
+  'open-hat': new Set(),
+};
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const loopBars = 4;
@@ -109,8 +134,10 @@ export function useBeatProgrammer({ctx, playNote, stop}: UseBeatProgrammerArgs) 
   const [status, setStatus] = useState<BeatProgrammerStatus>('idle');
   const [notes, setNotes] = useState<QuantizedNote[]>([]);
   const [playheadBeat, setPlayheadBeat] = useState(0);
-  // During count-in: counts down 4 → 1
   const [countDown, setCountDown] = useState(0);
+  const [drumSteps, setDrumSteps] = useState<Record<DrumTrackId, Set<number>>>(drumStepsDefault);
+  const [isDrumMuted, setIsDrumMuted] = useState(false);
+  const [drumsReady, setDrumsReady] = useState(false);
 
   const bpmRef = useRef(120);
   const statusRef = useRef<BeatProgrammerStatus>('idle');
@@ -120,11 +147,60 @@ export function useBeatProgrammer({ctx, playNote, stop}: UseBeatProgrammerArgs) 
   const completedRawRef = useRef<Array<{note: RawNote; endBeat: number}>>([]);
   const activeNoteRef = useRef<number | undefined>(undefined);
   const prevBeatRef = useRef(0);
+  const drumStepsRef = useRef<Record<DrumTrackId, Set<number>>>(drumStepsDefault);
+  useEffect(() => {
+    drumStepsRef.current = drumSteps;
+  }, [drumSteps]);
+  const isDrumMutedRef = useRef(false);
+  useEffect(() => {
+    isDrumMutedRef.current = isDrumMuted;
+  }, [isDrumMuted]);
+  const lastTriggeredDrumStepRef = useRef<number | undefined>(undefined);
+  const buffersRef = useRef<Map<string, AudioBuffer>>(new Map());
+  const drumsReadyRef = useRef(false);
+  drumsReadyRef.current = drumsReady;
 
   const playNoteRef = useRef(playNote);
   playNoteRef.current = playNote;
   const stopRef = useRef(stop);
   stopRef.current = stop;
+
+  useEffect(() => {
+    const load = async () => {
+      const buffers = new Map<string, AudioBuffer>();
+      await Promise.all(
+        drumTracks.map(async (track) => {
+          try {
+            const res = await fetch(track.file);
+            const arrayBuffer = await res.arrayBuffer();
+            const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+            buffers.set(track.id, audioBuffer);
+          } catch {
+          }
+        }),
+      );
+      buffersRef.current = buffers;
+      setDrumsReady(true);
+    };
+
+    void load();
+  }, [ctx]);
+
+  const triggerDrum = useCallback((trackId: string) => {
+    const buffer = buffersRef.current.get(trackId);
+    if (!buffer) return;
+    if (ctx.state !== 'running') void ctx.resume();
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    const gain = ctx.createGain();
+    gain.gain.value = 0.8;
+    source.connect(gain);
+    gain.connect(ctx.destination);
+    source.start();
+  }, [ctx]);
+
+  const triggerDrumRef = useRef(triggerDrum);
+  triggerDrumRef.current = triggerDrum;
 
   // ── RAF loop ───────────────────────────────────────────────────────────────
 
@@ -182,18 +258,46 @@ export function useBeatProgrammer({ctx, playNote, stop}: UseBeatProgrammerArgs) 
         if (beat >= loopBeats) {
           finishRecording(loopBeats);
         }
+
+        const rawStep = snapToEighth(beat);
+        const currentStep = Math.min(Math.floor(rawStep / eighthNote), 15);
+        const prevStep = lastTriggeredDrumStepRef.current;
+        if (currentStep !== prevStep) {
+          lastTriggeredDrumStepRef.current = currentStep;
+          if (!isDrumMutedRef.current && drumsReadyRef.current) {
+            for (const track of drumTracks) {
+              if (drumStepsRef.current[track.id].has(currentStep)) {
+                triggerDrumRef.current(track.id);
+              }
+            }
+          }
+        }
       } else if (currentStatus === 'playing') {
         const loopSecs = loopBeats * 60 / bpm;
         const loopElapsed = elapsed % loopSecs;
         const beat = loopElapsed * bpm / 60;
 
-        // Detect loop wrap-around so the first note always re-triggers
         if (beat < prevBeatRef.current - 1) {
           activeNoteRef.current = undefined;
+          lastTriggeredDrumStepRef.current = undefined;
         }
 
         prevBeatRef.current = beat;
         setPlayheadBeat(beat);
+
+        const rawStep = snapToEighth(beat);
+        const currentStep = Math.min(Math.floor(rawStep / eighthNote), 15);
+        const prevStep = lastTriggeredDrumStepRef.current;
+        if (currentStep !== prevStep) {
+          lastTriggeredDrumStepRef.current = currentStep;
+          if (!isDrumMutedRef.current && drumsReadyRef.current) {
+            for (const track of drumTracks) {
+              if (drumStepsRef.current[track.id].has(currentStep)) {
+                triggerDrumRef.current(track.id);
+              }
+            }
+          }
+        }
 
         let activeMidi: number | undefined;
 
@@ -242,6 +346,7 @@ export function useBeatProgrammer({ctx, playNote, stop}: UseBeatProgrammerArgs) 
     notesRef.current = [];
     activeNoteRef.current = undefined;
     prevBeatRef.current = 0;
+    lastTriggeredDrumStepRef.current = undefined;
 
     const bpm = bpmRef.current;
     const beatDuration = 60 / bpm;
@@ -293,6 +398,7 @@ export function useBeatProgrammer({ctx, playNote, stop}: UseBeatProgrammerArgs) 
     stopRef.current();
     activeNoteRef.current = undefined;
     prevBeatRef.current = 0;
+    lastTriggeredDrumStepRef.current = undefined;
     startCtxTimeRef.current = ctx.currentTime;
     statusRef.current = 'playing';
     setNotes(quantized);
@@ -303,11 +409,15 @@ export function useBeatProgrammer({ctx, playNote, stop}: UseBeatProgrammerArgs) 
     if (statusRef.current === 'playing') {
       stopRef.current();
       activeNoteRef.current = undefined;
+      lastTriggeredDrumStepRef.current = undefined;
       statusRef.current = 'idle';
       setStatus('idle');
       setPlayheadBeat(0);
-    } else if (notesRef.current.length > 0) {
+    } else if (notesRef.current.length > 0 || drumStepsRef.current) {
+      const hasDrums = drumTracks.some((t) => drumStepsRef.current[t.id].size > 0);
+      if (notesRef.current.length === 0 && !hasDrums) return;
       activeNoteRef.current = undefined;
+      lastTriggeredDrumStepRef.current = undefined;
       prevBeatRef.current = 0;
       startCtxTimeRef.current = ctx.currentTime;
       statusRef.current = 'playing';
@@ -321,11 +431,36 @@ export function useBeatProgrammer({ctx, playNote, stop}: UseBeatProgrammerArgs) 
     completedRawRef.current = [];
     notesRef.current = [];
     activeNoteRef.current = undefined;
+    lastTriggeredDrumStepRef.current = undefined;
     statusRef.current = 'idle';
     setNotes([]);
     setStatus('idle');
     setCountDown(0);
     setPlayheadBeat(0);
+  }, []);
+
+  const toggleDrumStep = useCallback((trackId: DrumTrackId, step: number) => {
+    setDrumSteps((prev) => {
+      const next: Record<DrumTrackId, Set<number>> = {
+        kick: new Set(prev.kick),
+        snare: new Set(prev.snare),
+        hat: new Set(prev.hat),
+        'open-hat': new Set(prev['open-hat']),
+      };
+
+      const existing = next[trackId];
+      if (existing.has(step)) {
+        existing.delete(step);
+      } else {
+        existing.add(step);
+      }
+
+      return next;
+    });
+  }, []);
+
+  const toggleDrumMute = useCallback(() => {
+    setIsDrumMuted((m) => !m);
   }, []);
 
   // NoteOn always plays live AND records the note if recording is active.
@@ -386,6 +521,11 @@ export function useBeatProgrammer({ctx, playNote, stop}: UseBeatProgrammerArgs) 
     clearAll,
     noteOn,
     noteOff,
+    drumSteps,
+    toggleDrumStep,
+    isDrumMuted,
+    toggleDrumMute,
+    drumsReady,
   };
 }
 
@@ -587,6 +727,122 @@ function TransportButton({
   );
 }
 
+// ─── Drum Sequencer ───────────────────────────────────────────────────────────
+
+const drumStepCount = 16;
+
+type DrumSequencerProps = {
+  drumSteps: Record<DrumTrackId, Set<number>>;
+  playheadBeat: number;
+  status: BeatProgrammerStatus;
+  isDrumMuted: boolean;
+  isDrumsReady: boolean;
+  onToggleStep: (trackId: DrumTrackId, step: number) => void;
+  onToggleMute: () => void;
+};
+
+function DrumSequencer({
+  drumSteps,
+  playheadBeat,
+  status,
+  isDrumMuted,
+  isDrumsReady,
+  onToggleStep,
+  onToggleMute,
+}: DrumSequencerProps) {
+  const currentDrumStep = status === 'playing' || status === 'recording'
+    ? Math.min(Math.floor(snapToEighth(playheadBeat) / eighthNote), drumStepCount - 1)
+    : -1;
+
+  return (
+    <div
+      className='rounded-lg p-3'
+      style={{border: '1px solid #1e1e1e', backgroundColor: '#0a0a0a'}}
+    >
+      <div className='flex items-center justify-between mb-2'>
+        <span
+          className='text-xs font-semibold tracking-widest uppercase'
+          style={{color: '#737373'}}
+        >
+          Drum Sequencer
+        </span>
+        <button
+          type='button'
+          className={`px-2 py-0.5 text-xs font-mono rounded border transition-colors ${
+            isDrumMuted
+              ? 'bg-red-900/50 text-red-400 border-red-800'
+              : 'text-neutral-400 border-neutral-700 hover:border-neutral-500'
+          }`}
+          disabled={!isDrumsReady}
+          onClick={onToggleMute}
+        >
+          {isDrumMuted ? 'MUTE' : 'DRUMS'}
+        </button>
+      </div>
+
+      <div className='flex gap-1 mb-1 pl-14'>
+        {Array.from({length: drumStepCount}, (_, i) => {
+          const isBarStart = i % 4 === 0;
+          const isBeat = i % 2 === 0;
+          return (
+            <div
+              key={i}
+              className='flex-1 text-center text-xs font-mono'
+              style={{color: isBarStart ? '#555' : isBeat ? '#333' : '#222'}}
+            >
+              {isBarStart ? Math.floor(i / 4) + 1 : '.'}
+            </div>
+          );
+        })}
+      </div>
+
+      {drumTracks.map((track) => (
+        <div key={track.id} className='flex items-center gap-1 mb-1'>
+          <span
+            className='w-12 text-right text-xs font-mono shrink-0 pr-2'
+            style={{color: track.color}}
+          >
+            {track.label}
+          </span>
+          <div className='flex gap-1 flex-1'>
+            {Array.from({length: drumStepCount}, (_, step) => {
+              const isActive = drumSteps[track.id].has(step);
+              const isCurrent = step === currentDrumStep;
+              const isBarStart = step % 4 === 0;
+
+              return (
+                <button
+                  key={step}
+                  type='button'
+                  className='flex-1 h-6 rounded-sm border transition-colors'
+                  style={{
+                    backgroundColor: isActive ? track.color : isBarStart ? '#1a1a1a' : '#111',
+                    borderColor: isActive ? track.color : isBarStart ? '#2a2a2a' : '#1a1a1a',
+                    opacity: isDrumsReady ? 1 : 0.3,
+                    boxShadow: isCurrent && !isDrumMuted
+                      ? `0 0 4px ${track.color}40`
+                      : 'none',
+                  }}
+                  disabled={!isDrumsReady}
+                  onClick={() => {
+                    onToggleStep(track.id, step);
+                  }}
+                />
+              );
+            })}
+          </div>
+        </div>
+      ))}
+
+      {!isDrumsReady && (
+        <p className='text-xs mt-2' style={{color: '#404040'}}>
+          Loading drum samples...
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ─── BeatProgrammer component ─────────────────────────────────────────────────
 
 export type BeatProgrammerHandle = ReturnType<typeof useBeatProgrammer>;
@@ -607,8 +863,14 @@ export function BeatProgrammer({handle}: BeatProgrammerProps) {
     stopRecordingEarly,
     togglePlayback,
     clearAll,
+    drumSteps,
+    toggleDrumStep,
+    isDrumMuted,
+    toggleDrumMute,
+    drumsReady,
   } = handle;
 
+  const hasDrums = drumTracks.some((t) => drumSteps[t.id].size > 0);
   const bar = Math.floor(playheadBeat / beatsPerBar) + 1;
   const beatInBar = Math.floor(playheadBeat % beatsPerBar) + 1;
   const beatsLeft = Math.ceil(loopBeats - playheadBeat);
@@ -690,7 +952,7 @@ export function BeatProgrammer({handle}: BeatProgrammerProps) {
         <TransportButton
           color='green'
           isActive={status === 'playing'}
-          isDisabled={notes.length === 0 && status !== 'playing'}
+          isDisabled={notes.length === 0 && status !== 'playing' && !hasDrums}
           label={status === 'playing' ? '■ Stop' : '▶ Play'}
           onClick={togglePlayback}
         />
@@ -735,6 +997,17 @@ export function BeatProgrammer({handle}: BeatProgrammerProps) {
           status={status}
         />
       </div>
+
+      {/* Drum sequencer */}
+      <DrumSequencer
+        drumSteps={drumSteps}
+        playheadBeat={playheadBeat}
+        status={status}
+        isDrumMuted={isDrumMuted}
+        isDrumsReady={drumsReady}
+        onToggleStep={toggleDrumStep}
+        onToggleMute={toggleDrumMute}
+      />
 
       {/* Status hint */}
       <p className='text-xs' style={{color: '#404040'}}>
