@@ -1,5 +1,7 @@
 'use client';
 import {useCallback, useEffect, useRef, useState} from 'react';
+import {keyToMidi} from '@/utils/keyboard/musicalTyping';
+import {MusicalKeyboard} from '@/components/ui/MusicalKeyboard';
 import WebAudioRenderer from '@elemaudio/web-renderer';
 import {el} from '@elemaudio/core';
 import resolveConfig from 'tailwindcss/resolveConfig';
@@ -90,6 +92,10 @@ type SynthPageMainProps = {
 };
 
 function SynthPageMain({ctx, core}: SynthPageMainProps) {
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState<boolean>(false);
+  const [pressedMidiNotes, setPressedMidiNotes] = useState<ReadonlySet<number>>(new Set());
+  const heldMidiNotes = useRef<Set<number>>(new Set());
+
   const gateKey = 'gate';
   const gateDefault = false;
   const gateConst = useElConstBool(gateKey, gateDefault);
@@ -175,19 +181,76 @@ function SynthPageMain({ctx, core}: SynthPageMainProps) {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      // Cmd+K — toggle musical keyboard
+      if (event.metaKey && event.key === 'k') {
+        event.preventDefault();
+        setIsKeyboardOpen((open) => {
+          if (open) {
+            // Closing: release any held notes
+            heldMidiNotes.current.clear();
+            setPressedMidiNotes(new Set());
+            stop();
+          }
+
+          return !open;
+        });
+        return;
+      }
+
       if (event.repeat) {
         // Skip 2nd+ event if key is being held down already
         return;
       }
 
+      // Space bar — play current frequency
       if (event.code === keyCodes.space) {
         play();
+        return;
+      }
+
+      // Musical typing — only active when the keyboard overlay is open
+      if (isKeyboardOpen && !event.metaKey && !event.ctrlKey && !event.altKey) {
+        // Escape closes the overlay
+        if (event.key === 'Escape') {
+          heldMidiNotes.current.clear();
+          setPressedMidiNotes(new Set());
+          stop();
+          setIsKeyboardOpen(false);
+          return;
+        }
+
+        const midi = keyToMidi[event.key.toLowerCase()];
+        if (midi !== undefined) {
+          event.preventDefault();
+          heldMidiNotes.current.add(midi);
+          setPressedMidiNotes(new Set(heldMidiNotes.current));
+          playNote(midi);
+        }
       }
     };
 
     const onKeyUp = (event: KeyboardEvent) => {
       if (event.code === keyCodes.space) {
         stop();
+        return;
+      }
+
+      if (isKeyboardOpen) {
+        const midi = keyToMidi[event.key.toLowerCase()];
+        if (midi !== undefined) {
+          heldMidiNotes.current.delete(midi);
+          setPressedMidiNotes(new Set(heldMidiNotes.current));
+          if (heldMidiNotes.current.size === 0) {
+            stop();
+          } else {
+            // Resume the most recently held note
+            const held = Array.from(heldMidiNotes.current);
+            const lastHeld = held[held.length - 1];
+            if (lastHeld !== undefined) {
+              playNote(lastHeld);
+            }
+          }
+        }
       }
     };
 
@@ -198,7 +261,7 @@ function SynthPageMain({ctx, core}: SynthPageMainProps) {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
     };
-  }, [play, stop]);
+  }, [play, stop, playNote, isKeyboardOpen]);
 
   return (
     <SynthPageLayout
@@ -261,14 +324,36 @@ function SynthPageMain({ctx, core}: SynthPageMainProps) {
           />
         </KnobsLayout>
       </SynthContainer>
-      <InteractionArea
-        icon={<PlayIcon />}
-        title="Touch here to play or press the 'Space' key."
-        onTouchStart={play}
-        onTouchEnd={stop}
-        onMouseDown={play}
-        onMouseUp={stop}
-      />
+      <div className='flex flex-col items-center gap-2 w-full'>
+        <InteractionArea
+          icon={<PlayIcon />}
+          title="Touch here to play or press the 'Space' key."
+          onTouchStart={play}
+          onTouchEnd={stop}
+          onMouseDown={play}
+          onMouseUp={stop}
+        />
+        <button
+          type='button'
+          className='text-xs text-neutral-500 hover:text-neutral-300 transition-colors'
+          onClick={() => {
+            setIsKeyboardOpen((open) => !open);
+          }}
+        >
+          {isKeyboardOpen ? 'Close Musical Typing' : 'Musical Typing  ⌘K'}
+        </button>
+        {isKeyboardOpen && (
+          <MusicalKeyboard
+            pressedMidiNotes={pressedMidiNotes}
+            onClose={() => {
+              heldMidiNotes.current.clear();
+              setPressedMidiNotes(new Set());
+              stop();
+              setIsKeyboardOpen(false);
+            }}
+          />
+        )}
+      </div>
     </SynthPageLayout>
   );
 }
