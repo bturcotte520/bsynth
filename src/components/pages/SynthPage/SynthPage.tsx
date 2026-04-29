@@ -2,6 +2,7 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
 import {keyToMidi} from '@/utils/keyboard/musicalTyping';
 import {MusicalKeyboard} from '@/components/ui/MusicalKeyboard';
+import {useBeatProgrammer, BeatProgrammer} from './BeatProgrammer';
 import WebAudioRenderer from '@elemaudio/web-renderer';
 import {el} from '@elemaudio/core';
 import resolveConfig from 'tailwindcss/resolveConfig';
@@ -179,6 +180,16 @@ function SynthPageMain({ctx, core}: SynthPageMainProps) {
     [freqConst, play],
   );
 
+  const bp = useBeatProgrammer({ctx, playNote, stop});
+
+  // Refs so the keyboard useEffect closure stays fresh without re-running at 60fps
+  const bpStatusRef = useRef(bp.status);
+  bpStatusRef.current = bp.status;
+  const bpNoteOnRef = useRef(bp.noteOn);
+  bpNoteOnRef.current = bp.noteOn;
+  const bpNoteOffRef = useRef(bp.noteOff);
+  bpNoteOffRef.current = bp.noteOff;
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       // Cmd+K — toggle musical keyboard
@@ -224,7 +235,12 @@ function SynthPageMain({ctx, core}: SynthPageMainProps) {
           event.preventDefault();
           heldMidiNotes.current.add(midi);
           setPressedMidiNotes(new Set(heldMidiNotes.current));
-          playNote(midi);
+
+          if (bpStatusRef.current === 'recording') {
+            bpNoteOnRef.current(midi);
+          } else {
+            playNote(midi);
+          }
         }
       }
     };
@@ -240,12 +256,16 @@ function SynthPageMain({ctx, core}: SynthPageMainProps) {
         if (midi !== undefined) {
           heldMidiNotes.current.delete(midi);
           setPressedMidiNotes(new Set(heldMidiNotes.current));
-          if (heldMidiNotes.current.size === 0) {
+
+          if (bpStatusRef.current === 'recording') {
+            bpNoteOffRef.current(midi);
+          } else if (heldMidiNotes.current.size === 0) {
             stop();
           } else {
             // Resume the most recently held note
             const held = Array.from(heldMidiNotes.current);
             const lastHeld = held[held.length - 1];
+
             if (lastHeld !== undefined) {
               playNote(lastHeld);
             }
@@ -263,9 +283,31 @@ function SynthPageMain({ctx, core}: SynthPageMainProps) {
     };
   }, [play, stop, playNote, isKeyboardOpen]);
 
+  const midiNoteOn = useCallback(
+    (midi: number) => {
+      if (bpStatusRef.current === 'recording') {
+        bpNoteOnRef.current(midi);
+      } else {
+        playNote(midi);
+      }
+    },
+    [playNote],
+  );
+
+  const midiNoteOff = useCallback(
+    (midi: number) => {
+      if (bpStatusRef.current === 'recording') {
+        bpNoteOffRef.current(midi);
+      } else {
+        stop();
+      }
+    },
+    [stop],
+  );
+
   return (
     <SynthPageLayout
-      topPanel={<MidiSelector playNote={playNote} stopNote={stop} />}
+      topPanel={<MidiSelector playNote={midiNoteOn} stopNote={midiNoteOff} />}
     >
       <SynthContainer
         isEnabled
@@ -324,7 +366,8 @@ function SynthPageMain({ctx, core}: SynthPageMainProps) {
           />
         </KnobsLayout>
       </SynthContainer>
-      <div className='flex flex-col items-center gap-2 w-full'>
+      <div className='flex flex-col items-center gap-4 w-full pb-8'>
+        <BeatProgrammer handle={bp} />
         <InteractionArea
           icon={<PlayIcon />}
           title="Touch here to play or press the 'Space' key."
