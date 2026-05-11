@@ -4,6 +4,8 @@
 
 <img src="./public/og-image.png">
 
+Additional features such as musical typing, drum programming, and recording features have been added.
+
 ## Development
 
 See [DEVELOPMENT](./DEVELOPMENT.md) guide.
